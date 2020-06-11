@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>FREYA IGSN Barcode Scanner</title>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+  <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0, shrink-to-fit=no" name="viewport">
+  <meta name="theme-color" content="#9CCD70">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="stylesheet" type="text/css" href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700|Roboto+Slab:400,700|Material+Icons" />
+  <link rel="stylesheet" type="text/css" href="assets/css/material-kit.css?v=2.0.5">
+  <link rel="manifest" href="manifest.json" type="application/manifest+json">
+  <link rel="icon" href="assets/img/igsn-48.png" type="image/png">
+  <script src="assets/js/core/jquery.min.js" type="text/javascript"></script>
+  <script src="assets/js/core/popper.min.js" type="text/javascript"></script>
+  <script src="assets/js/core/bootstrap-material-design.min.js" type="text/javascript"></script>
+  <script src="assets/js/showdown.min.js" type="text/javascript"></script>
+  <script src="assets/js/zxing.min.js" type="text/javascript"></script>
+  <script type="text/javascript">
+    // Service worker to install as mobile application:
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js', { scope:'./' }).then(
+        reg => { console.log("[ServiceWorker] Registration successful with scope: ", reg.scope); },
+        err => { console.log("[ServiceWorker] Registration failed: ", err); }
+      );
+    }
+    
+    // main logic:
+    jQuery(function($, undefined) {
+      var resultsDiv = $('#results');
+      var errorsDiv = $('#errors');
+      var markdownConverter = new showdown.Converter({
+        simplifiedAutoLink: true,
+        openLinksInNewWindow: true,
+      });
+          
+      var showIgsn = function(igsn) {
+        igsn = igsn.toUpperCase();
+        var baseQuery = 'https://api.datacite.org/dois?query=relatedIdentifiers.relatedIdentifier:' + encodeURIComponent(igsn);
+        
+        var orcidsEl = $('<ul></ul>'), fundingEl = $('<ul></ul>'), datasetEl = $('<div></div>'), publicationEl = $('<ul></ul>'), igsnEl = $('<ul></ul>');
+        resultsDiv.empty()
+          .append($('<div></div>').append('<b>Detected IGSN: </b>').append($('<a target="_blank"></a>').attr('href', 'http://igsn.org/' + encodeURIComponent(igsn)).text(igsn)))
+          .append('<h3>Scientists</h3>').append(orcidsEl)
+          .append('<h3>Funding</h3>').append(fundingEl)
+          .append('<h3>Linked Datasets</h3>').append(datasetEl)
+          .append('<h3>Linked Publications</h3>').append(publicationEl)
+          .append('<h3>Other related Samples</h3>').append(igsnEl)
+          .show();
+        
+        // metadata:
+        $.ajax(baseQuery, {
+          dataType: 'json'
+        }).done(function(data) {
+          var orcids = {}, awards = {}, igsns = new Set(), publicationDois = new Set();
+          for (let ds of data.data) {
+            let atts = ds.attributes;
+            let persons = atts.creators || [];
+            if (atts.contributors) {
+              persons = persons.concat(atts.contributors);
+            }
+            for (let p of persons) {
+              for (let id of p.nameIdentifiers || []) {
+                if (/orcid/i.test(id.nameIdentifierScheme)) {
+                  let orcid = id.nameIdentifier.trim();
+                  if (!orcid.startsWith('http')) {
+                    orcid = 'https://orcid.org/' + orcid;
+                  }
+                  let name = p.name;
+                  if (p.familyName) {
+                    name = p.familyName.trim();
+                    if (p.givenName) {
+                      name += ', ' + p.givenName.trim();
+                    }
+                  }
+                  orcids[orcid] = name.trim();
+                }
+              }
+            }
+            for (let f of atts.fundingReferences || []) {
+              let name = (f.funderName || 'Unknown funder').trim();
+              if (f.awardNumber) {
+                name += ', award/grant ' + f.awardNumber.trim();
+              }
+              awards[f.awardUri.trim()] = name;
+            }
+            for (let r of atts.relatedIdentifiers || []) {
+              switch(r.relatedIdentifierType) {
+                case 'IGSN':
+                  igsns.add(r.relatedIdentifier.toUpperCase().trim());
+                  break;
+                case 'DOI':
+                  publicationDois.add(r.relatedIdentifier);
+                  break;
+              }
+            }
+          }
+          // Remove ourselves from the collected IGSNs:
+          igsns.delete(igsn);
+
+          for (let [orcid, name] of Object.entries(orcids).sort((a,b) => a[1].localeCompare(b[1], 'en', {sensitivity: 'base', ignorePunctuation: true}))) {
+            orcidsEl.append($('<li></li>').append($('<span></span>').text(name + ': '))
+              .append($('<a target="_blank"></a>').attr('href', orcid).text(orcid)));
+          }
+          for (let [award, name] of Object.entries(awards).sort((a,b) => a[1].localeCompare(b[1], 'en', {sensitivity: 'base', ignorePunctuation: true}))) {
+            fundingEl.append($('<li></li>').append($('<span></span>').text(name + ': '))
+              .append($('<a target="_blank"></a>').attr('href', award).text(award)));
+          }
+          for (let igsn of Array.from(igsns).sort()) {
+            igsnEl.append($('<li></li>')
+              .append($('<a target="_blank"></a>').attr('href', 'http://igsn.org/' + encodeURIComponent(igsn)).text(igsn)));
+          }
+          for (let doi of Array.from(publicationDois).sort()) {
+            doi = 'https://doi.org/' + encodeURIComponent(doi).replace(/%2F/g, '/');
+            // TODO: Instead of a simple list use CrossRef webservice to fetch citations (not yet working!)
+            publicationEl.append($('<li></li>')
+              .append($('<a target="_blank"></a>').attr('href', doi).text(doi)));
+          }
+        });
+
+        // citations:
+        $.ajax(baseQuery + '&style=apa&sort=publicationYear', {
+          headers: {
+            'Accept': 'text/x-bibliography'
+          },
+          dataType: 'text'
+        }).done(function(text) {
+          datasetEl.html(markdownConverter.makeHtml(text));
+        });
+      }
+    
+      var showBarcodeData = function(data) {
+        //  try to extract the IGSN from the URL:
+        var igsn;
+        try {
+          var url = new URL(data);
+          if (url.hostname=='hdl.handle.net' && url.pathname.startsWith('/10273/')) {
+            igsn = decodeURIComponent(url.pathname.substring(7));
+          } else if (url.hostname=='igsn.org') {
+            igsn = decodeURIComponent(url.pathname.substring(1));
+          } else if (url.searchParams && url.searchParams.has('igsn')) {
+            igsn = url.searchParams.get('igsn');
+          } else {
+            igsn = data;
+          }
+        } catch (e) {
+          igsn = data;
+        }
+        if (/^[A-Z][A-Z0-9]+$/i.test(igsn)) {
+          errorsDiv.hide();
+          showIgsn(igsn);
+        } else {
+          resultsDiv.hide();
+          errorsDiv.empty().text('Invalid IGSN: ' + igsn).show();
+        }
+      }
+    
+      // initialize barcode scanner:
+      //let selectedDeviceId;
+      const codeReader = new ZXing.BrowserMultiFormatReader();
+      console.log('ZXing code reader initialized');
+      var lastCode;
+      const constraints = {
+        video: {
+          facingMode: 'environment',
+          resizeMode: 'crop-and-scale',
+          aspectRatio: 1.,
+        },
+        audio: false,
+      };
+      codeReader.decodeFromConstraints(constraints, 'preview', (result, err) => {
+        var code;
+        if (result && (code = result.getText()) != lastCode) {
+          console.log('Found barcode: ' + code);
+          showBarcodeData(code);
+          lastCode = code;
+        }
+        if (err && !(err instanceof ZXing.NotFoundException)) {
+          console.error(err);
+        }
+      });
+      console.log('Started continous decode from camera.');
+    });
+  </script>
+</head>
+
+<body>
+  <nav class="navbar navbar-light sticky-top" style="background-color: #9CCD70 !important; border-radius: 0 !important;">
+    <div class="container">
+      <div class="navbar-brand col-lg-4 col-md-6 ml-auto mr-auto">
+        <img class="img-fluid" src="assets/img/igsn-48.png" width="24" height="24" alt="IGSN">
+        <span class="font-weight-bold">FREYA IGSN Barcode Scanner</span>
+      </div>
+    </div>
+  </nav>
+  <div class="container">
+    <div class="col-lg-4 col-md-6 ml-auto mr-auto">
+      <div class="card">
+        <div class="card-body">
+          <div class="embed-responsive embed-responsive-1by1">
+            <div class="embed-responsive-item">
+              <video id="preview"></video>
+            </div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="errors" class="collapse alert alert-warning" role="alert"></div>
+          <div id="results"><span class="text-info">Scan an IGSN barcode!</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+
+</html>

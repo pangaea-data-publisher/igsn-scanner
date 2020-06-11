@@ -1,0 +1,35 @@
+{
+  "name": "FREYA IGSN Barcode Scanner",
+  "description": "Allows to scan IGSN barcodes / QR codes and display metadata and related PIDs",
+  "short_name": "IGSN Scanner",
+  "icons": [
+    {
+      "src": "assets/img/igsn-48.png",
+      "type": "image/png",
+      "sizes": "48x48"
+    },
+    {
+      "src": "assets/img/igsn-128.png",
+      "type": "image/png",
+      "sizes": "128x128"
+    },
+    {
+      "src": "assets/img/igsn-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "assets/img/igsn-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "https://dataportals.pangaea.de/freya/igsn/",
+  "background_color": "#eee",
+  "theme_color": "#9CCD70",
+  "display": "standalone",
+  "orientation": "portrait",
+  "scope": "https://dataportals.pangaea.de/freya/igsn/",
+  "lang": "en-US",
+  "prefer_related_applications": false
+}
